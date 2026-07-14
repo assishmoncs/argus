@@ -1,26 +1,15 @@
 """
 Unit tests for admin-only commands — specifically the /reset permission check.
-
-These tests mock the aiogram Bot and Message objects so no live Telegram
-connection is required.
+Mocks the aiogram Bot and the WarningRepository to run without Telegram or database connections.
 """
 
-import asyncio
-import sqlite3
 import sys
 import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# ---------------------------------------------------------------------------
-# Ensure the project root is on sys.path so we can import main.py helpers
-# ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-
-# ---------------------------------------------------------------------------
-# Helpers to build fake aiogram objects
-# ---------------------------------------------------------------------------
 
 def make_user(user_id: int = 123, first_name: str = "Alice", username: str = "alice"):
     user = MagicMock()
@@ -41,15 +30,10 @@ def make_message(user, chat_id: int = -100):
 
 
 def make_chat_member(status: str):
-    """Return a fake ChatMember whose .status matches aiogram's ChatMemberStatus values."""
     member = MagicMock()
     member.status = status
     return member
 
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 class TestResetAdminCheck:
     """Verify /reset enforces admin-only access."""
@@ -61,49 +45,41 @@ class TestResetAdminCheck:
 
         user = make_user(user_id=1, first_name="Bob")
         message = make_message(user)
+        bot_mock = MagicMock()
+        bot_mock.get_chat_member = AsyncMock(
+            return_value=make_chat_member(ChatMemberStatus.MEMBER)
+        )
 
-        with patch("main.bot") as mock_bot, \
-             patch("main.conn") as mock_conn:
+        with patch("bot.handlers.moderation_handlers.WarningRepository.clear_warnings", new_callable=AsyncMock) as mock_clear:
+            from bot.handlers.moderation_handlers import cmd_reset
+            await cmd_reset(message, bot_mock)
 
-            mock_bot.get_chat_member = AsyncMock(
-                return_value=make_chat_member(ChatMemberStatus.MEMBER)
-            )
-            # Provide a fake cursor so the DB path is not reached
-            mock_conn.cursor.return_value = MagicMock()
-
-            from main import cmd_reset
-            await cmd_reset(message)
-
+        # Clear warnings should not have been called
+        mock_clear.assert_not_called()
+        
         # Should have replied with permission-denied message
         message.answer.assert_awaited_once()
-        call_args = message.answer.call_args
-        text = call_args.args[0] if call_args.args else ""
-        assert "Permission Denied" in text or "denied" in text.lower()
+        text = message.answer.call_args.args[0]
+        assert "Permission Denied" in text
 
     @pytest.mark.asyncio
     async def test_administrator_can_reset(self):
-        """Group administrator can reset their own warnings."""
+        """Group administrator can reset their warnings."""
         from aiogram.enums import ChatMemberStatus
 
         user = make_user(user_id=2, first_name="Carol")
         message = make_message(user)
+        bot_mock = MagicMock()
+        bot_mock.get_chat_member = AsyncMock(
+            return_value=make_chat_member(ChatMemberStatus.ADMINISTRATOR)
+        )
 
-        with patch("main.bot") as mock_bot, \
-             patch("main.conn") as mock_conn:
-
-            mock_bot.get_chat_member = AsyncMock(
-                return_value=make_chat_member(ChatMemberStatus.ADMINISTRATOR)
-            )
-            cursor_mock = MagicMock()
-            mock_conn.cursor.return_value = cursor_mock
-
-            from main import cmd_reset
-            await cmd_reset(message)
+        with patch("bot.handlers.moderation_handlers.WarningRepository.clear_warnings", new_callable=AsyncMock) as mock_clear:
+            from bot.handlers.moderation_handlers import cmd_reset
+            await cmd_reset(message, bot_mock)
 
         # DB update should have been called
-        cursor_mock.execute.assert_called_once()
-        sql = cursor_mock.execute.call_args.args[0]
-        assert "UPDATE warnings" in sql
+        mock_clear.assert_awaited_once_with(message.chat.id, user.id)
 
         # Success reply should have been sent
         message.answer.assert_awaited_once()
@@ -112,24 +88,21 @@ class TestResetAdminCheck:
 
     @pytest.mark.asyncio
     async def test_creator_can_reset(self):
-        """Group creator can reset their own warnings."""
+        """Group creator can reset their warnings."""
         from aiogram.enums import ChatMemberStatus
 
         user = make_user(user_id=3, first_name="Dan")
         message = make_message(user)
+        bot_mock = MagicMock()
+        bot_mock.get_chat_member = AsyncMock(
+            return_value=make_chat_member(ChatMemberStatus.CREATOR)
+        )
 
-        with patch("main.bot") as mock_bot, \
-             patch("main.conn") as mock_conn:
+        with patch("bot.handlers.moderation_handlers.WarningRepository.clear_warnings", new_callable=AsyncMock) as mock_clear:
+            from bot.handlers.moderation_handlers import cmd_reset
+            await cmd_reset(message, bot_mock)
 
-            mock_bot.get_chat_member = AsyncMock(
-                return_value=make_chat_member(ChatMemberStatus.CREATOR)
-            )
-            cursor_mock = MagicMock()
-            mock_conn.cursor.return_value = cursor_mock
-
-            from main import cmd_reset
-            await cmd_reset(message)
-
+        mock_clear.assert_awaited_once_with(message.chat.id, user.id)
         message.answer.assert_awaited_once()
         success_text = message.answer.call_args.args[0]
         assert "✅" in success_text
@@ -139,15 +112,16 @@ class TestResetAdminCheck:
         """If get_chat_member raises, the user gets a helpful error instead of a crash."""
         user = make_user(user_id=4, first_name="Eve")
         message = make_message(user)
+        bot_mock = MagicMock()
+        bot_mock.get_chat_member = AsyncMock(
+            side_effect=Exception("Telegram API error")
+        )
 
-        with patch("main.bot") as mock_bot:
-            mock_bot.get_chat_member = AsyncMock(
-                side_effect=Exception("Telegram API error")
-            )
+        with patch("bot.handlers.moderation_handlers.WarningRepository.clear_warnings", new_callable=AsyncMock) as mock_clear:
+            from bot.handlers.moderation_handlers import cmd_reset
+            await cmd_reset(message, bot_mock)
 
-            from main import cmd_reset
-            await cmd_reset(message)
-
+        mock_clear.assert_not_called()
         message.answer.assert_awaited_once()
         error_text = message.answer.call_args.args[0]
-        assert "verify" in error_text.lower() or "❌" in error_text
+        assert "verify" in error_text.lower()
