@@ -1,6 +1,9 @@
-```
 # Environment variables
 .env
+
+# Argus log files
+logs/
+
 
 # Python
 __pycache__/
