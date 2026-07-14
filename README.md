@@ -1,106 +1,132 @@
-# 🤖 Argus - The All-Seeing AI Guardian
+# 🤖 Argus — Advanced AI-Powered Telegram Group Manager
 
-An intelligent AI-powered Telegram group moderator bot built using Google Gemini API.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue.svg)](https://t.me/Argus_Group_Manager_Bot)
 
-## Features
+Argus is a production-ready, highly modular, and extensible Telegram group management and moderation bot. It leverages the state-of-the-art **Google Gemini 2.0 Flash API** to perform context-aware message analysis alongside a robust multi-tiered defensive pipeline (lexical, pattern, flood, repeat, raid, and CAPTCHA filters).
 
-- **Smart Content Moderation**: Automatically detects and deletes spam, marketing, adult/NSFW content
-- **Toxic Language Detection**: Warns users for toxic language, harassment, or rule-breaking
-- **Auto-Ban System**: Automatically bans repeat offenders after 3 warnings
-- **Context Awareness**: Understands conversation context and group flow to make better moderation decisions
-- **De-escalation**: Calms down heated arguments before they escalate
-- **User Commands**:
-  - `/start` - Get information about the bot
-  - `/warnings` - Check your warning count
-  - `/reset` - Reset your warnings (admin feature)
+Experience Argus live on Telegram at: **[t.me/Argus_Group_Manager_Bot](https://t.me/Argus_Group_Manager_Bot)**
 
-## Installation
+---
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd argus-bot
-   ```
+## 🚀 Key Features
 
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 🛡️ Multi-Tiered Content Moderation Pipeline
+Every incoming message flows through a three-stage verification pipeline before delivery:
+1. **Filter Service**: Real-time evaluation of custom filters (exact match, wildcard, regex), invite links, and obfuscation techniques.
+2. **Spam & Flood Protection**: Heavy-duty rate limits, mention capping, repetitive pattern identification, and media frequency controls.
+3. **AI Service**: Contextual checking utilizing the Google Gemini API to analyze intent, tone, toxicity, or complex rules violations, with built-in heuristics-based fallback on API failure.
 
-3. **Set up environment variables**
-   
-   Create a `.env` file in the project root:
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit `.env` with your credentials:
-   ```
-   TELEGRAM_TOKEN=your_telegram_bot_token_here
-   GEMINI_API_KEY=your_gemini_api_key_here
-   GROUP_CHAT_ID=0
-   ```
+### 🛡️ Anti-Raid & Welcome CAPTCHA Gatekeeper
+- Protects your groups from bots and coordinated user raids.
+- Automatically restricts new members and issues a 90-second interactive inline button challenge.
+- Auto-kicks bots and unverified users upon timeout.
 
-4. **Get your Telegram Bot Token**
-   - Open Telegram and search for `@BotFather`
-   - Send `/newbot` and follow the instructions
-   - Copy the token you receive
+### ⚙️ Extensible Plugin & Command System
+Built on a clean modular architecture (SOLID principles, Repository pattern), Argus includes a plug-and-play plugin loader. Adding a new module or bot command requires zero modifications to the core engine.
 
-5. **Get your Gemini API Key**
-   - Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
-   - Create an API key
-   - Copy it to your `.env` file
+---
 
-6. **Run the bot**
-   ```bash
-   python main.py
-   ```
+## 🛠️ Command Reference
 
-## How It Works
+### Moderation Commands
+* `/warn [reason]` — Issues a warning to the replied-to user (auto-escalates at limit).
+* `/unwarn` — Removes the last warning from the replied-to user.
+* `/warnings` — Displays the warning counts of the replied-to user.
+* `/mute [reason]` — Permanently mutes the replied-to user.
+* `/tmute [duration] [reason]` — Temporarily mutes the replied-to user (e.g. `30m`, `2h`, `1d`).
+* `/unmute` — Lifts mute restrictions from the replied-to user.
+* `/ban [reason]` — Bans the replied-to user.
+* `/tban [duration] [reason]` — Temporarily bans the replied-to user.
+* `/unban` — Lifts ban restrictions from the target user.
+* `/kick [reason]` — Kicks the replied-to user (ban and immediate unban).
+* `/reset` — Resets a user's warning history (admin-only).
 
-1. **Message Analysis**: Every message is sent to Google Gemini AI for analysis
-2. **Context Understanding**: The bot maintains a history of recent messages (last 10) to understand conversation context
-3. **Decision Making**: AI returns a JSON response with:
-   - `action`: "none", "warn", "delete", or "ban"
-   - `reason`: Brief explanation of the decision
-   - `severity`: 1-5 scale of violation severity
-   - `user_message`: Polite message to show the user if warned
-4. **Enforcement**: Based on the AI's decision, the bot:
-   - Deletes inappropriate messages
-   - Sends warnings to users
-   - Bans users after 3 warnings or for severe violations
+### Administrative Commands
+* `/promote [owner|admin|moderator|trusted]` — Sets a group member's authorization role.
+* `/demote` — Revokes all privileges from a group member.
+* `/lock` / `/unlock` — Restricts/restores message sending permissions in the group.
+* `/pin` / `/unpin` — Pins or unpins the replied-to message.
+* `/purge [N]` — Purges `N` messages or all messages up to the replied-to message.
+* `/settings [key] [value]` — Configures group settings (`limit`, `ai`, `captcha`, `raid`).
+* `/welcome [template]` — Custom welcome template (supports placeholders: `{first_name}`, `{username}`).
+* `/goodbye [template]` — Custom goodbye template.
 
-## Configuration
+### Notes & Custom Triggers
+* `/note [trigger] [content]` — Saves a text reply linked to a trigger.
+* `/delnote [trigger]` — Deletes the specified note.
+* `/notes` — Lists all registered notes for the chat.
+* `#trigger` — Triggers a saved note response in the active chat.
 
-Edit `config.py` or `.env` to customize:
+---
 
-- `TELEGRAM_TOKEN`: Your Telegram bot token
-- `GEMINI_API_KEY`: Your Google Gemini API key
-- `GROUP_CHAT_ID`: Set to specific chat ID to moderate only one group, or `0` for all groups
+## 🔧 Installation & Setup
 
-## Project Structure
+### 1. Prerequisites
+- Python 3.10 or higher
+- SQLite3
+- A Telegram bot token (from [@BotFather](https://t.me/BotFather))
+- A Google Gemini API Key (from [Google AI Studio](https://aistudio.google.com/))
 
-```
-argus-bot/
-├── main.py          # Main bot logic and message handlers
-├── moderation.py    # AI-powered moderation logic
-├── config.py        # Configuration and environment variables
-├── requirements.txt # Python dependencies
-├── .env.example     # Example environment variables
-└── README.md        # This file
+### 2. Quickstart
+Clone the repository and install dependencies:
+```bash
+git clone https://github.com/yourusername/argus.git
+cd argus
+pip install -r requirements.txt
 ```
 
-## Best For
+### 3. Environment Configuration
+Copy the sample configuration file and populate your keys:
+```bash
+cp .env.example .env
+```
+Fill in the following keys inside your `.env`:
+```ini
+TELEGRAM_TOKEN=your_telegram_bot_token
+GEMINI_API_KEY=your_gemini_api_key
+GROUP_CHAT_ID=0 # Set to 0 to moderate all chats, or a specific group chat ID
+DATABASE_PATH=argus.db
+LOG_DIR=logs
+```
 
-- Community groups
-- Study groups
-- Project teams
-- Any active Telegram group that wants smart, always-on moderation
+### 4. Running the Bot
+Start the application:
+```bash
+python main.py
+```
 
-## License
+### 5. Running the Test Suite
+The codebase includes comprehensive unit and integration tests (54 test cases covering filters, spam detection, config validation, and concurrency):
+```bash
+python -m pytest
+```
 
-MIT License - See LICENSE file for details
+---
 
-## Contributing
+## 📁 Project Architecture
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+```
+argus/
+├── main.py                     # Application entry point
+├── config/                     # Configuration loading & validation
+├── database/                   # Database SQLite wrapper, models, & repositories
+├── services/                   # AI integration, text processing, spam & scheduler services
+├── moderation/                 # Core moderation actions (bans, mutes, warnings)
+├── bot/                        # Telegram router, handlers, filters, and middleware
+├── plugins/                    # Modular plugin system
+├── utils/                      # Helper utilities (text normalization, logging setup)
+└── tests/                      # Extensive test suites
+```
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License**. For the full license text, see the [LICENSE](LICENSE) file.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please fork the repository, make your changes, and submit a Pull Request. Ensure that all tests pass (`python -m pytest`) before submission.
