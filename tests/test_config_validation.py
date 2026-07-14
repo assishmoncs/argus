@@ -1,8 +1,6 @@
 """
-Tests for P0-3: Input Validation for Environment Variables.
-
-Tests validate_config() directly against the real config.py, bypassing the
-conftest stub by temporarily removing the 'config' entry from sys.modules.
+Tests for environment variable input validation.
+Tests Settings initialization behavior directly by clearing imported configuration modules.
 """
 
 import sys
@@ -15,21 +13,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 @pytest.fixture()
 def real_config_module(monkeypatch):
     """
-    Temporarily remove the conftest stub so that `import config` in each test
-    re-executes the real config.py. Restores the stub after the test.
+    Temporarily remove configuration modules from sys.modules so they are re-evaluated
+    against the new monkeypatched environment variables.
     """
-    stub = sys.modules.pop("config", None)
-    yield
-    # Restore stub (or remove if it wasn't there originally)
+    # Pop configuration modules
     sys.modules.pop("config", None)
-    if stub is not None:
-        sys.modules["config"] = stub
+    sys.modules.pop("config.settings", None)
+    yield
+    # Cleanup after test
+    sys.modules.pop("config", None)
+    sys.modules.pop("config.settings", None)
 
 
 class TestValidateConfig:
 
     def test_valid_config_does_not_exit(self, real_config_module, monkeypatch):
-        """All vars present → validate_config() returns a dict, no SystemExit."""
+        """All vars present → settings loads correctly, no SystemExit."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi")
         monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
         monkeypatch.setenv("GROUP_CHAT_ID", "0")
@@ -58,7 +57,7 @@ class TestValidateConfig:
         assert exc.value.code == 1
 
     def test_both_missing_exits_once(self, real_config_module, monkeypatch):
-        """Both vars missing → single sys.exit(1) (not two separate exits)."""
+        """Both vars missing → single sys.exit(1)."""
         monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 

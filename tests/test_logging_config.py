@@ -1,8 +1,6 @@
 """
-Tests for P1-2: Proper Logging System.
-
-Verifies that setup_logging() creates the expected handlers, levels, and
-rotation configuration without writing to disk.
+Tests for Proper Logging System.
+Verifies that setup_logging() creates the expected handlers, levels, and rotation configuration.
 """
 
 import logging
@@ -10,13 +8,8 @@ import logging.handlers
 import sys
 import os
 import pytest
-from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# conftest.py stubs 'logging_config' with a no-op so main.py tests aren't
-# affected by real log-file creation. Here we need the *real* module.
-sys.modules.pop("logging_config", None)
 
 
 @pytest.fixture(autouse=True)
@@ -34,22 +27,22 @@ def clean_argus_logger():
 class TestSetupLogging:
 
     def test_returns_argus_logger(self, tmp_path):
-        from logging_config import setup_logging
+        from utils.logging_config import setup_logging
         logger = setup_logging(log_dir=str(tmp_path))
         assert logger.name == "argus"
 
     def test_logger_level_is_debug(self, tmp_path):
-        from logging_config import setup_logging
+        from utils.logging_config import setup_logging
         logger = setup_logging(log_dir=str(tmp_path))
         assert logger.level == logging.DEBUG
 
     def test_two_handlers_created(self, tmp_path):
-        from logging_config import setup_logging
+        from utils.logging_config import setup_logging
         logger = setup_logging(log_dir=str(tmp_path))
         assert len(logger.handlers) == 2
 
     def test_file_handler_is_timed_rotating(self, tmp_path):
-        from logging_config import setup_logging
+        from utils.logging_config import setup_logging
         logger = setup_logging(log_dir=str(tmp_path))
         file_handlers = [
             h for h in logger.handlers
@@ -58,7 +51,7 @@ class TestSetupLogging:
         assert len(file_handlers) == 1, "Expected exactly one TimedRotatingFileHandler"
 
     def test_file_handler_rotates_daily(self, tmp_path):
-        from logging_config import setup_logging
+        from utils.logging_config import setup_logging
         logger = setup_logging(log_dir=str(tmp_path))
         file_handler = next(
             h for h in logger.handlers
@@ -67,7 +60,7 @@ class TestSetupLogging:
         assert file_handler.when.upper() == "MIDNIGHT"
 
     def test_file_handler_keeps_7_backups(self, tmp_path):
-        from logging_config import setup_logging
+        from utils.logging_config import setup_logging
         logger = setup_logging(log_dir=str(tmp_path))
         file_handler = next(
             h for h in logger.handlers
@@ -76,7 +69,7 @@ class TestSetupLogging:
         assert file_handler.backupCount == 7
 
     def test_file_handler_level_is_debug(self, tmp_path):
-        from logging_config import setup_logging
+        from utils.logging_config import setup_logging
         logger = setup_logging(log_dir=str(tmp_path))
         file_handler = next(
             h for h in logger.handlers
@@ -85,7 +78,7 @@ class TestSetupLogging:
         assert file_handler.level == logging.DEBUG
 
     def test_console_handler_level_is_info(self, tmp_path):
-        from logging_config import setup_logging
+        from utils.logging_config import setup_logging
         logger = setup_logging(log_dir=str(tmp_path))
         stream_handlers = [
             h for h in logger.handlers
@@ -96,14 +89,14 @@ class TestSetupLogging:
         assert stream_handlers[0].level == logging.INFO
 
     def test_log_directory_created(self, tmp_path):
-        from logging_config import setup_logging
+        from utils.logging_config import setup_logging
         log_dir = tmp_path / "sublogs"
         setup_logging(log_dir=str(log_dir))
         assert log_dir.exists()
 
     def test_duplicate_setup_calls_do_not_add_handlers(self, tmp_path):
         """Calling setup_logging() twice must not double-register handlers."""
-        from logging_config import setup_logging
+        from utils.logging_config import setup_logging
         setup_logging(log_dir=str(tmp_path))
         setup_logging(log_dir=str(tmp_path))
         logger = logging.getLogger("argus")
