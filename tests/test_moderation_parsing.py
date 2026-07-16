@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # conftest.py stubs 'moderation' with an AsyncMock for use by main.py tests.
 # Here we need the *real* moderation module, so pop the stub and import fresh.
-# 'config' remains stubbed (safe — moderation only reads GEMINI_API_KEY from it).
+# 'config' remains stubbed (safe — moderation only reads the AI key from it).
 sys.modules.pop("moderation", None)
 from moderation import (
     _extract_json_object,

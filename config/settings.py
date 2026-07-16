@@ -18,7 +18,8 @@ class Settings:
         self.errors: list[str] = []
 
         self.TELEGRAM_TOKEN = self._get_required_str("TELEGRAM_TOKEN", "Get it from @BotFather on Telegram: https://t.me/BotFather")
-        self.GEMINI_API_KEY = self._get_required_str("GEMINI_API_KEY", "Get it from Google AI Studio: https://makersuite.google.com/app/apikey")
+        self.GROQ_API_KEY = self._get_required_str("GROQ_API_KEY", "Get it from Groq: https://console.groq.com/keys")
+        self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
         
         self.GROUP_CHAT_ID = self._get_int("GROUP_CHAT_ID", default=0)
         self.DATABASE_PATH = os.getenv("DATABASE_PATH", "warnings.db").strip()
@@ -27,7 +28,7 @@ class Settings:
         # Optional AI Provider keys
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
         self.ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
-        self.DEFAULT_AI_PROVIDER = os.getenv("DEFAULT_AI_PROVIDER", "gemini").strip().lower()
+        self.DEFAULT_AI_PROVIDER = os.getenv("DEFAULT_AI_PROVIDER", "groq").strip().lower()
 
         if self.errors:
             print("\n🚨 Argus cannot start — configuration errors found:\n", file=sys.stderr)

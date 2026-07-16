@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue.svg)](https://t.me/Argus_Group_Manager_Bot)
 
-Argus is a production-ready, highly modular, and extensible Telegram group management and moderation bot. It leverages the state-of-the-art **Google Gemini 2.0 Flash API** to perform context-aware message analysis alongside a robust multi-tiered defensive pipeline (lexical, pattern, flood, repeat, raid, and CAPTCHA filters).
+Argus is a production-ready, highly modular, and extensible Telegram group management and moderation bot. It leverages the **Groq** API with `llama-3.1-8b-instant` to perform context-aware message analysis alongside a robust multi-tiered defensive pipeline (lexical, pattern, flood, repeat, raid, and CAPTCHA filters).
 
 Experience Argus live on Telegram at: **[t.me/Argus_Group_Manager_Bot](https://t.me/Argus_Group_Manager_Bot)**
 
@@ -15,7 +15,7 @@ Experience Argus live on Telegram at: **[t.me/Argus_Group_Manager_Bot](https://t
 Every incoming message flows through a three-stage verification pipeline before delivery:
 1. **Filter Service**: Real-time evaluation of custom filters (exact match, wildcard, regex), invite links, and obfuscation techniques.
 2. **Spam & Flood Protection**: Heavy-duty rate limits, mention capping, repetitive pattern identification, and media frequency controls.
-3. **AI Service**: Contextual checking utilizing the Google Gemini API to analyze intent, tone, toxicity, or complex rules violations, with built-in heuristics-based fallback on API failure.
+3. **AI Service**: Contextual checking utilizing Groq to analyze intent, tone, toxicity, or complex rules violations, with built-in heuristics-based fallback on API failure.
 
 ### 🛡️ Anti-Raid & Welcome CAPTCHA Gatekeeper
 - Protects your groups from bots and coordinated user raids.
@@ -66,7 +66,7 @@ Built on a clean modular architecture (SOLID principles, Repository pattern), Ar
 - Python 3.10 or higher
 - SQLite3
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
-- A Google Gemini API Key (from [Google AI Studio](https://aistudio.google.com/))
+- A Groq API Key (from [Groq Console](https://console.groq.com/keys))
 
 ### 2. Quickstart
 Clone the repository and install dependencies:
@@ -84,7 +84,7 @@ cp .env.example .env
 Fill in the following keys inside your `.env`:
 ```ini
 TELEGRAM_TOKEN=your_telegram_bot_token
-GEMINI_API_KEY=your_gemini_api_key
+GROQ_API_KEY=your_groq_api_key
 GROUP_CHAT_ID=0 # Set to 0 to moderate all chats, or a specific group chat ID
 DATABASE_PATH=argus.db
 LOG_DIR=logs

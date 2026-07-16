@@ -2,16 +2,15 @@
 AI Service layer providing modular provider interface and automatic fallback mechanisms.
 """
 
-import abc
+import asyncio
 import json
 import logging
-import asyncio
-from typing import Any, Optional
 from datetime import datetime, timezone
-from google import genai
-from google.genai import types as genai_types
+from typing import Any, Optional
 
 from config.settings import settings
+from services.ai_providers import AIProvider, build_default_providers
+
 
 logger = logging.getLogger("argus.ai")
 
@@ -98,157 +97,15 @@ def get_default_response() -> dict[str, Any]:
     return {"action": "none", "reason": "AI analysis unavailable", "severity": 1, "user_message": ""}
 
 
-class AIProvider(abc.ABC):
-    """Abstract Base Class defining AI provider interfaces."""
-
-    @abc.abstractmethod
-    async def analyze_message(self, text: str, context: str) -> dict[str, Any]:
-        """Analyze a message for moderation actions."""
-        pass
-
-    @abc.abstractmethod
-    async def explain_message(self, text: str) -> str:
-        """Provide an explanation for moderation/content questions."""
-        pass
-
-    @abc.abstractmethod
-    async def generate_summary(self, text: str) -> str:
-        """Summarize recent conversation history."""
-        pass
-
-    @abc.abstractmethod
-    async def answer_question(self, question: str, rules_context: str) -> str:
-        """Answer a question based on group rules."""
-        pass
-
-
-class GeminiProvider(AIProvider):
-    """Google Gemini AI integration."""
-
-    def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash") -> None:
-        self.api_key = api_key
-        self.model_name = model_name
-        self.client = genai.Client(api_key=self.api_key)
-
-    async def analyze_message(self, text: str, context: str) -> dict[str, Any]:
-        system_prompt = (
-            "You are Argus, an intelligent and fair AI moderator for Telegram groups.\n"
-            "Protect the group from spam, toxicity, and inappropriate content. Act quickly but fairly.\n"
-            "Strict Rules:\n"
-            "- Delete marketing, spam, crypto, affiliate links immediately.\n"
-            "- Delete adult, NSFW, gore, or disturbing media/content.\n"
-            "- Warn for toxicity, harassment, swearing, or off-topic spam.\n"
-            "- Calm down heated arguments before they escalate.\n"
-            "Always reply with valid JSON only in this exact format:\n"
-            "{\n"
-            '  "action": "none" | "warn" | "delete" | "ban",\n'
-            '  "reason": "brief reason for your decision",\n'
-            '  "severity": 1-5,\n'
-            '  "user_message": "short polite message to the user if warning"\n'
-            "}"
-        )
-        prompt = (
-            f"{system_prompt}\n\n"
-            f"Recent chat context:\n{context}\n\n"
-            f"New message to analyze: {text}"
-        )
-
-        def _generate():
-            return self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    temperature=0.1,
-                    max_output_tokens=300,
-                ),
-            )
-
-        response = await asyncio.to_thread(_generate)
-        parsed = _parse_json_response(response.text)
-        if parsed is None:
-            return get_default_response()
-        return validate_moderation_response(parsed)
-
-    async def explain_message(self, text: str) -> str:
-        prompt = f"Explain briefly and politely why this message is toxic, inappropriate or violates standard group chat guidelines:\n\n{text}"
-        def _generate():
-            return self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(max_output_tokens=200),
-            )
-        response = await asyncio.to_thread(_generate)
-        return response.text.strip()
-
-    async def generate_summary(self, text: str) -> str:
-        prompt = (
-            "Summarize the following chat conversation history into bullet points highlight key topics, "
-            "arguments, or decisions. Keep it structured and easy to read:\n\n"
-            f"{text}"
-        )
-        def _generate():
-            return self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(max_output_tokens=400),
-            )
-        response = await asyncio.to_thread(_generate)
-        return response.text.strip()
-
-    async def answer_question(self, question: str, rules_context: str) -> str:
-        prompt = (
-            f"You are the group moderator. Based on the following group rules, answer the user's question. "
-            f"If the rules don't cover it, respond politely with standard etiquette.\n\n"
-            f"Rules:\n{rules_context}\n\n"
-            f"Question: {question}"
-        )
-        def _generate():
-            return self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(max_output_tokens=300),
-            )
-        response = await asyncio.to_thread(_generate)
-        return response.text.strip()
-
-
-class FallbackMockProvider(AIProvider):
-    """Local fallback / stub provider used when primary model fails."""
-
-    async def analyze_message(self, text: str, context: str) -> dict[str, Any]:
-        logger.warning("Fallback provider used for analysis.")
-        bad_words = {"spam", "crypto", "bitcoin", "porn", "adult", "scam"}
-        cleaned = text.lower()
-        if any(word in cleaned for word in bad_words):
-            return {
-                "action": "delete",
-                "reason": "Local heuristic check flagged content",
-                "severity": 2,
-                "user_message": "Please respect the rules. No spam/scams.",
-            }
-        return {"action": "none", "reason": "Local check passed", "severity": 1, "user_message": ""}
-
-    async def explain_message(self, text: str) -> str:
-        return "Explanation is currently unavailable. Placed under automatic heuristic guidelines."
-
-    async def generate_summary(self, text: str) -> str:
-        return "Conversation summary is currently unavailable (API Cooldown/Quota exceeded)."
-
-    async def answer_question(self, question: str, rules_context: str) -> str:
-        return "I am unable to access the AI service to answer questions at the moment. Please refer directly to the pinned rules."
-
-
 class AIService:
     """Orchestrates AI tasks with automatic fallback and rate limiting."""
 
-    def __init__(self) -> None:
-        self.providers: list[AIProvider] = []
-        
-        if settings.GEMINI_API_KEY:
-            self.providers.append(GeminiProvider(settings.GEMINI_API_KEY))
+    def __init__(self, providers: Optional[list[AIProvider]] = None) -> None:
+        self.providers = providers if providers is not None else build_default_providers(
+            settings.GROQ_API_KEY,
+            settings.DEFAULT_AI_PROVIDER,
+        )
 
-        self.providers.append(FallbackMockProvider())
-        
         self._rate_limits: dict[int, list[float]] = {}
         self._cooldown_window = 60.0
         self._max_requests = 10
