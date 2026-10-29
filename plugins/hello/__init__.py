@@ -1,5 +1,5 @@
 """
-Demo dynamic plugin registering a basic /hello command.
+Demo dynamic plugin registering a basic /hello command with lifecycle cleanup.
 """
 
 from typing import Any, Optional
@@ -15,19 +15,21 @@ class HelloPlugin(BasePlugin):
         super().__init__(
             name="HelloPlugin",
             description="Dynamic demo plugin that greets users on /hello command.",
+            version="2.0.0",
+            author="Argus Team",
+            priority=50,
         )
         self.router: Optional[Router] = None
 
     async def load(self, bot: Any, dp: Any) -> None:
-        self.router = Router()
+        router = Router(name="hello_plugin_router")
 
-        @self.router.message(Command("hello"))
-        async def hello_cmd(message: types.Message):
+        @router.message(Command("hello"))
+        async def hello_cmd(message: types.Message) -> None:
             await message.reply("Hello! 👋 I am running from a dynamically loaded plugin.")
 
-        dp.include_router(self.router)
+        self.register_router(dp, router)
 
     async def unload(self, bot: Any, dp: Any) -> None:
-        # Note: aiogram doesn't provide a direct unregister router method,
-        # but we could remove hooks or simply allow garbage-collection
-        pass
+        await super().unload(bot, dp)
+        self.router = None

@@ -2,7 +2,33 @@
 Services package for Argus.
 """
 
-from services.ai_service import ai_service, AIService
-from services.filter_service import filter_service, FilterService
-from services.spam_service import spam_service, SpamService
-from services.scheduler import scheduler_service, SchedulerService
+from services.ai_service import (
+    AIProvider,
+    AIResponseCache,
+    AIService,
+    CircuitBreaker,
+    FallbackMockProvider,
+    GeminiProvider,
+    HeuristicFallbackProvider,
+    ai_service,
+)
+from services.filter_service import FilterService, filter_service
+from services.scheduler import SchedulerService, scheduler_service
+from services.spam_service import SpamService, spam_service
+
+__all__ = [
+    "AIProvider",
+    "AIResponseCache",
+    "AIService",
+    "CircuitBreaker",
+    "FallbackMockProvider",
+    "GeminiProvider",
+    "HeuristicFallbackProvider",
+    "ai_service",
+    "FilterService",
+    "filter_service",
+    "SchedulerService",
+    "scheduler_service",
+    "SpamService",
+    "spam_service",
+]

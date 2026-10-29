@@ -1,132 +1,87 @@
-# 🤖 Argus — Advanced AI-Powered Telegram Group Manager
+# 🤖 Argus — Enterprise AI-Powered Telegram Group Manager
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue.svg)](https://t.me/Argus_Group_Manager_Bot)
 
-Argus is a production-ready, highly modular, and extensible Telegram group management and moderation bot. It leverages the state-of-the-art **Google Gemini 2.0 Flash API** to perform context-aware message analysis alongside a robust multi-tiered defensive pipeline (lexical, pattern, flood, repeat, raid, and CAPTCHA filters).
+Argus is an enterprise-ready, modular, and extensible Telegram group management and moderation platform. It pairs the **Google Gemini 2.0 Flash API** (with LRU+TTL response caching, circuit-breaker resilience, and model fallback cascades) with a multi-tiered defensive pipeline covering lexical/regex filters, flood/spam limiters, anti-raid lockouts, CAPTCHA verification, structured telemetry, and a dependency-aware plugin system.
 
 Experience Argus live on Telegram at: **[t.me/Argus_Group_Manager_Bot](https://t.me/Argus_Group_Manager_Bot)**
 
 ---
 
-## 🚀 Key Features
+## 🚀 Key Enterprise Capabilities
 
 ### 🛡️ Multi-Tiered Content Moderation Pipeline
-Every incoming message flows through a three-stage verification pipeline before delivery:
-1. **Filter Service**: Real-time evaluation of custom filters (exact match, wildcard, regex), invite links, and obfuscation techniques.
-2. **Spam & Flood Protection**: Heavy-duty rate limits, mention capping, repetitive pattern identification, and media frequency controls.
-3. **AI Service**: Contextual checking utilizing the Google Gemini API to analyze intent, tone, toxicity, or complex rules violations, with built-in heuristics-based fallback on API failure.
+Every incoming message flows through an isolated, fault-tolerant verification pipeline:
+1. **Filter Service**: Compiled regex/wildcard/exact pattern matching with LRU regex caching, ReDoS protection, zero-width character stripping, Unicode homoglyph normalization, and obfuscation detection.
+2. **Spam & Flood Protection**: Thread-safe sliding-window rate limiters for floods, duplicate messages, mention spam, emoji spam, stickers, GIFs, forwards, files, and links with automatic memory garbage collection.
+3. **AI Service (Gemini + Multi-Signal Heuristics)**:
+   - **LRU + TTL Response Cache**: Deduplicates repeated messages in `<0.1ms` without consuming API quota.
+   - **Three-State Circuit Breaker**: Automatically isolates upstream outages (`CLOSED` → `OPEN` → `HALF_OPEN`) and cascades across fallback Gemini models (`gemini-3.8-flash` → `gemini-3.5-flash-lite`).
+   - **Multi-Signal Heuristic Engine**: Detects severe safety violations, crypto/phishing scams, toxic insults, and all-caps shouting locally when offline or rate-limited.
 
-### 🛡️ Anti-Raid & Welcome CAPTCHA Gatekeeper
-- Protects your groups from bots and coordinated user raids.
-- Automatically restricts new members and issues a 90-second interactive inline button challenge.
-- Auto-kicks bots and unverified users upon timeout.
+### 🗄️ Production-Scale Database Layer
+- **Connection Pooling & WAL Concurrency**: Bounded `sqlite3` connection pool configured with `PRAGMA journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout`, and 64MB page cache.
+- **Atomic Transactions & Lock Retries**: `async with db.transaction()` guarantees atomic read-modify-write sequences with jittered exponential backoff on transient lock contention.
+- **Read-Through Repository Cache & Audit Trail**: Hot-path group settings, roles, filters, and whitelists are cached in memory with automatic invalidation on write, backed by composite indexes and an `audit_logs` compliance table.
 
-### ⚙️ Extensible Plugin & Command System
-Built on a clean modular architecture (SOLID principles, Repository pattern), Argus includes a plug-and-play plugin loader. Adding a new module or bot command requires zero modifications to the core engine.
+### 📊 Observability, Logging & Telemetry
+- **Correlation IDs & Secret Scrubbing**: Every incoming update is assigned a trace correlation ID (`[cid=...]`) and passes through automatic secret redaction (`TELEGRAM_TOKEN`, `GEMINI_API_KEY`).
+- **Structured JSON & Rotating File Logs**: Supports both human-readable text logs and single-line JSON logs (`LOG_FORMAT=json`) for log aggregators.
+- **Real-Time Telemetry Collector**: Tracks counters, gauges, and rolling latency percentiles (`p50`, `p95`, `p99`), inspectable via `/health` or `/status`.
+
+### 🧩 Extensible Plugin Architecture
+- **Dependency & Priority Resolution**: Topological dependency sorting, priority ordering, per-plugin load timeouts, hot-reload (`reload_plugin`), router detachment on unload, and pipeline hooks (`on_startup`, `on_shutdown`, `on_pre_message`, `on_post_moderation`).
 
 ---
 
 ## 🛠️ Command Reference
 
 ### Moderation Commands
-* `/warn [reason]` — Issues a warning to the replied-to user (auto-escalates at limit).
-* `/unwarn` — Removes the last warning from the replied-to user.
-* `/warnings` — Displays the warning counts of the replied-to user.
-* `/mute [reason]` — Permanently mutes the replied-to user.
-* `/tmute [duration] [reason]` — Temporarily mutes the replied-to user (e.g. `30m`, `2h`, `1d`).
-* `/unmute` — Lifts mute restrictions from the replied-to user.
-* `/ban [reason]` — Bans the replied-to user.
-* `/tban [duration] [reason]` — Temporarily bans the replied-to user.
+* `/warn [reason]` — Issues an atomic warning to the target user (auto-escalates at limit).
+* `/unwarn` — Removes the most recent warning from the target user.
+* `/warnings` — Displays current warning count for a user.
+* `/mute [reason]` — Permanently mutes the target user.
+* `/tmute [duration] [reason]` — Temporarily mutes the target user (`30s`, `15m`, `2h`, `1d`, `1w`).
+* `/unmute` — Lifts mute restrictions from the target user.
+* `/ban [reason]` — Permanently bans the target user.
+* `/tban [duration] [reason]` — Temporarily bans the target user.
 * `/unban` — Lifts ban restrictions from the target user.
-* `/kick [reason]` — Kicks the replied-to user (ban and immediate unban).
+* `/kick [reason]` / `/softban [reason]` — Kicks or softbans the target user.
 * `/reset` — Resets a user's warning history (admin-only).
 
-### Administrative Commands
-* `/promote [owner|admin|moderator|trusted]` — Sets a group member's authorization role.
-* `/demote` — Revokes all privileges from a group member.
-* `/lock` / `/unlock` — Restricts/restores message sending permissions in the group.
-* `/pin` / `/unpin` — Pins or unpins the replied-to message.
-* `/purge [N]` — Purges `N` messages or all messages up to the replied-to message.
+### Administrative & Filter Commands
 * `/settings [key] [value]` — Configures group settings (`limit`, `ai`, `captcha`, `raid`).
-* `/welcome [template]` — Custom welcome template (supports placeholders: `{first_name}`, `{username}`).
-* `/goodbye [template]` — Custom goodbye template.
+* `/filter [pattern] [exact|wildcard|regex] [delete|warn|mute|ban]` — Adds a custom filter.
+* `/delfilter [id]` / `/filters` — Deletes or lists custom filters for the chat.
+* `/whitelist [word]` / `/unwhitelist [word]` — Manages whitelisted words for the chat.
+* `/promote [owner|admin|moderator|trusted]` / `/demote` — Manages member authorization roles.
+* `/lock` / `/unlock` — Restricts or restores group message permissions.
+* `/pin` / `/unpin` — Pins or unpins messages.
+* `/purge [N]` — Purges up to `N` messages (bounded up to 500 messages).
+* `/welcome [template]` / `/goodbye [template]` — Custom join/leave templates (supports `[first_name]`/`{first_name}`, `[username]`/`{username}`, `[group_title]`/`{group_title}`).
+* `/health` / `/status` — Displays live database pool, AI cache/circuit-breaker, and telemetry metrics.
 
 ### Notes & Custom Triggers
-* `/note [trigger] [content]` — Saves a text reply linked to a trigger.
+* `/note [trigger] [content]` — Saves a note reply linked to a trigger.
 * `/delnote [trigger]` — Deletes the specified note.
 * `/notes` — Lists all registered notes for the chat.
-* `#trigger` — Triggers a saved note response in the active chat.
+* `#trigger` — Triggers a saved note response in chat.
 
 ---
 
 ## 🔧 Installation & Setup
 
-### 1. Prerequisites
-- Python 3.10 or higher
-- SQLite3
-- A Telegram bot token (from [@BotFather](https://t.me/BotFather))
-- A Google Gemini API Key (from [Google AI Studio](https://aistudio.google.com/))
-
-### 2. Quickstart
-Clone the repository and install dependencies:
+### 1. Quickstart
 ```bash
-git clone https://github.com/yourusername/argus.git
+git clone https://github.com/assishmoncs/argus.git
 cd argus
 pip install -r requirements.txt
-```
-
-### 3. Environment Configuration
-Copy the sample configuration file and populate your keys:
-```bash
 cp .env.example .env
 ```
-Fill in the following keys inside your `.env`:
-```ini
-TELEGRAM_TOKEN=your_telegram_bot_token
-GEMINI_API_KEY=your_gemini_api_key
-GROUP_CHAT_ID=0 # Set to 0 to moderate all chats, or a specific group chat ID
-DATABASE_PATH=argus.db
-LOG_DIR=logs
-```
 
-### 4. Running the Bot
-Start the application:
+### 2. Running the Bot & Test Suite
 ```bash
 python main.py
-```
-
-### 5. Running the Test Suite
-The codebase includes comprehensive unit and integration tests (54 test cases covering filters, spam detection, config validation, and concurrency):
-```bash
 python -m pytest
 ```
-
----
-
-## 📁 Project Architecture
-
-```
-argus/
-├── main.py                     # Application entry point
-├── config/                     # Configuration loading & validation
-├── database/                   # Database SQLite wrapper, models, & repositories
-├── services/                   # AI integration, text processing, spam & scheduler services
-├── moderation/                 # Core moderation actions (bans, mutes, warnings)
-├── bot/                        # Telegram router, handlers, filters, and middleware
-├── plugins/                    # Modular plugin system
-├── utils/                      # Helper utilities (text normalization, logging setup)
-└── tests/                      # Extensive test suites
-```
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License**. For the full license text, see the [LICENSE](LICENSE) file.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please fork the repository, make your changes, and submit a Pull Request. Ensure that all tests pass (`python -m pytest`) before submission.
