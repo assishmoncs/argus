@@ -1,87 +1,47 @@
-# 🤖 Argus — Enterprise AI-Powered Telegram Group Manager
+# Argus — Telegram group manager
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue.svg)](https://t.me/Argus_Group_Manager_Bot)
+Argus is a Python Telegram group moderation bot. It provides administrator commands, optional AI-assisted moderation, configurable word filters, spam controls, welcome messages and optional join verification. It runs locally or on a server using long polling and SQLite.
 
-Argus is an enterprise-ready, modular, and extensible Telegram group management and moderation platform. It pairs the **Google Gemini 2.0 Flash API** (with LRU+TTL response caching, circuit-breaker resilience, and model fallback cascades) with a multi-tiered defensive pipeline covering lexical/regex filters, flood/spam limiters, anti-raid lockouts, CAPTCHA verification, structured telemetry, and a dependency-aware plugin system.
+## How automatic moderation works
 
-Experience Argus live on Telegram at: **[t.me/Argus_Group_Manager_Bot](https://t.me/Argus_Group_Manager_Bot)**
+- AI moderation considers recent group text and warns only when the model identifies an unmistakable critical incident (severity 5), such as a credible serious threat. The message is also deleted. Ordinary arguments, profanity, caps, links, and discussion of sensitive topics should not trigger AI action. AI can make mistakes; review warnings with `/warnings` and use `/unwarn` or `/reset` when appropriate.
+- Automatic AI warnings do not cause an automatic mute or ban. An administrator can take further action. Manual warnings still escalate at the configured limit: the current implementation mutes for 24 hours when the limit is below 5, or bans when it is 5 or greater. Automatic warnings count toward that limit when a later manual warning is issued.
+- During Gemini errors, rate limits, or unavailable contextual analysis, the offline fallback takes no action. It cannot reliably distinguish threats from quotations. Spam detection and administrator-configured filters run separately.
+- Spam thresholds can delete messages without issuing warnings. Invite links are deleted by default. Custom filters can explicitly delete, warn, mute or ban, regardless of AI severity. Review existing filters with `/filters` and remove unwanted ones with `/delfilter ID`. These features can still make mistakes.
+- AI analyzes text and captions, not image, video or audio content. Group text and recent context are sent to Google's Gemini API when AI is enabled. Tell group members and check your Google account's terms, quotas and billing. `/settings ai off` disables AI per group.
 
----
+## Setup
 
-## 🚀 Key Enterprise Capabilities
+1. Install Python 3.10 or newer. In PowerShell, open the project directory and run:
 
-### 🛡️ Multi-Tiered Content Moderation Pipeline
-Every incoming message flows through an isolated, fault-tolerant verification pipeline:
-1. **Filter Service**: Compiled regex/wildcard/exact pattern matching with LRU regex caching, ReDoS protection, zero-width character stripping, Unicode homoglyph normalization, and obfuscation detection.
-2. **Spam & Flood Protection**: Thread-safe sliding-window rate limiters for floods, duplicate messages, mention spam, emoji spam, stickers, GIFs, forwards, files, and links with automatic memory garbage collection.
-3. **AI Service (Gemini + Multi-Signal Heuristics)**:
-   - **LRU + TTL Response Cache**: Deduplicates repeated messages in `<0.1ms` without consuming API quota.
-   - **Three-State Circuit Breaker**: Automatically isolates upstream outages (`CLOSED` → `OPEN` → `HALF_OPEN`) and cascades across fallback Gemini models (`gemini-3.8-flash` → `gemini-3.5-flash-lite`).
-   - **Multi-Signal Heuristic Engine**: Detects severe safety violations, crypto/phishing scams, toxic insults, and all-caps shouting locally when offline or rate-limited.
+   ```powershell
+   py -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   python -m pip install -r requirements.txt
+   Copy-Item .env.example .env
+   ```
 
-### 🗄️ Production-Scale Database Layer
-- **Connection Pooling & WAL Concurrency**: Bounded `sqlite3` connection pool configured with `PRAGMA journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout`, and 64MB page cache.
-- **Atomic Transactions & Lock Retries**: `async with db.transaction()` guarantees atomic read-modify-write sequences with jittered exponential backoff on transient lock contention.
-- **Read-Through Repository Cache & Audit Trail**: Hot-path group settings, roles, filters, and whitelists are cached in memory with automatic invalidation on write, backed by composite indexes and an `audit_logs` compliance table.
+   If PowerShell blocks activation, run `.\.venv\Scripts\python.exe` instead of `python` in the following commands.
 
-### 📊 Observability, Logging & Telemetry
-- **Correlation IDs & Secret Scrubbing**: Every incoming update is assigned a trace correlation ID (`[cid=...]`) and passes through automatic secret redaction (`TELEGRAM_TOKEN`, `GEMINI_API_KEY`).
-- **Structured JSON & Rotating File Logs**: Supports both human-readable text logs and single-line JSON logs (`LOG_FORMAT=json`) for log aggregators.
-- **Real-Time Telemetry Collector**: Tracks counters, gauges, and rolling latency percentiles (`p50`, `p95`, `p99`), inspectable via `/health` or `/status`.
+2. In Telegram, open [@BotFather](https://t.me/BotFather), send `/newbot` and follow its prompts. Copy the token into `TELEGRAM_TOKEN` in `.env`. Keep it private; anyone with the token can control the bot. If exposed, revoke it through BotFather.
+3. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/apikey), enable any required billing or quota for your project, and put the key in `GEMINI_API_KEY` in `.env`. The configured model must be available to your project; edit `GEMINI_MODEL` and `GEMINI_FALLBACK_MODELS` if necessary. Never commit `.env`.
+4. Add the bot to a Telegram **group or supergroup** and promote it to administrator. Grant deletion and restriction/ban permissions for moderation, and pin/change-info permissions if you intend to use those commands. Telegram administrators receive group messages; if running without admin rights, disable privacy mode via BotFather's `/setprivacy` and re-add the bot, but moderation actions still require the appropriate rights. See [Telegram bot settings](https://core.telegram.org/bots/features#botfather).
+5. Run `python main.py` and keep the process running. Only one polling instance should use the token; remove an existing webhook if switching from a webhook deployment. Use a process manager or host that restarts the bot after a reboot. SQLite defaults to `warnings.db` in the working directory; back it up along with your configuration, and restrict access to both.
+6. In the group, send `/settings` as an administrator and check AI, CAPTCHA and raid settings. Test in a private test group first: verify a normal disagreement is left alone, check `/warnings` and `/unwarn` by replying to a test member, and verify deletion and restriction permissions. Don't test with real threats or harmful material.
 
-### 🧩 Extensible Plugin Architecture
-- **Dependency & Priority Resolution**: Topological dependency sorting, priority ordering, per-plugin load timeouts, hot-reload (`reload_plugin`), router detachment on unload, and pipeline hooks (`on_startup`, `on_shutdown`, `on_pre_message`, `on_post_moderation`).
+`GROUP_CHAT_ID=0` allows all groups; set it to a numeric group ID to limit the message and join/leave moderation pipeline. Commands have their own group and permission checks; do not treat this setting as an access control boundary. Restart after changing `.env`. Only use the bot in groups where you are authorized to manage messages.
 
----
+## Commands
 
-## 🛠️ Command Reference
+Reply to a member's message for target-based commands. Moderation commands include `/warn [reason]`, `/unwarn`, `/warnings`, `/reset`, `/mute`, `/tmute 15m`, `/unmute`, `/ban`, `/tban 1d`, `/unban`, `/kick` and `/softban`. `/settings` displays configuration; use `/settings ai off`, `/settings captcha on`, `/settings raid on`, or `/settings limit 3` to change it. CAPTCHA and raid controls may restrict or remove members, so enable them deliberately.
 
-### Moderation Commands
-* `/warn [reason]` — Issues an atomic warning to the target user (auto-escalates at limit).
-* `/unwarn` — Removes the most recent warning from the target user.
-* `/warnings` — Displays current warning count for a user.
-* `/mute [reason]` — Permanently mutes the target user.
-* `/tmute [duration] [reason]` — Temporarily mutes the target user (`30s`, `15m`, `2h`, `1d`, `1w`).
-* `/unmute` — Lifts mute restrictions from the target user.
-* `/ban [reason]` — Permanently bans the target user.
-* `/tban [duration] [reason]` — Temporarily bans the target user.
-* `/unban` — Lifts ban restrictions from the target user.
-* `/kick [reason]` / `/softban [reason]` — Kicks or softbans the target user.
-* `/reset` — Resets a user's warning history (admin-only).
+Administrators can use `/filter`, `/filters`, `/delfilter`, `/whitelist`, `/unwhitelist`, `/promote`, `/demote`, `/lock`, `/unlock`, `/pin`, `/unpin`, `/purge`, `/welcome`, `/goodbye`, `/health`, `/status`, `/note`, `/notes` and `/delnote`. Use `/help` for available bot commands and check command replies for syntax. Custom roles are separate from Telegram permissions; the bot itself still needs Telegram administrator rights.
 
-### Administrative & Filter Commands
-* `/settings [key] [value]` — Configures group settings (`limit`, `ai`, `captcha`, `raid`).
-* `/filter [pattern] [exact|wildcard|regex] [delete|warn|mute|ban]` — Adds a custom filter.
-* `/delfilter [id]` / `/filters` — Deletes or lists custom filters for the chat.
-* `/whitelist [word]` / `/unwhitelist [word]` — Manages whitelisted words for the chat.
-* `/promote [owner|admin|moderator|trusted]` / `/demote` — Manages member authorization roles.
-* `/lock` / `/unlock` — Restricts or restores group message permissions.
-* `/pin` / `/unpin` — Pins or unpins messages.
-* `/purge [N]` — Purges up to `N` messages (bounded up to 500 messages).
-* `/welcome [template]` / `/goodbye [template]` — Custom join/leave templates (supports `[first_name]`/`{first_name}`, `[username]`/`{username}`, `[group_title]`/`{group_title}`).
-* `/health` / `/status` — Displays live database pool, AI cache/circuit-breaker, and telemetry metrics.
+## Troubleshooting and tests
 
-### Notes & Custom Triggers
-* `/note [trigger] [content]` — Saves a note reply linked to a trigger.
-* `/delnote [trigger]` — Deletes the specified note.
-* `/notes` — Lists all registered notes for the chat.
-* `#trigger` — Triggers a saved note response in chat.
+- Bot does not respond: check the process, token, connectivity, group membership, privacy mode and administrator rights. A webhook or second polling process can conflict. Check logs in `logs/` and use `/health`.
+- AI takes no action: check `/settings`, key, model availability, quota and logs. On errors, it deliberately falls back to no action. A successful response does not guarantee accurate moderation.
+- Cannot delete or restrict: grant the corresponding administrator permissions and check Telegram's restrictions on the target and message age.
+- Run `python -m pytest -q` from the project directory. Tests do not replace a live Telegram test.
 
----
-
-## 🔧 Installation & Setup
-
-### 1. Quickstart
-```bash
-git clone https://github.com/assishmoncs/argus.git
-cd argus
-pip install -r requirements.txt
-cp .env.example .env
-```
-
-### 2. Running the Bot & Test Suite
-```bash
-python main.py
-python -m pytest
-```
+Configuration is documented in `.env.example`. Do not share tokens, API keys, databases, or logs containing group information.

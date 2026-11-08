@@ -162,7 +162,7 @@ class ModerationActions:
 
             group_settings = await GroupRepository.get_group(chat_id)
             limit = int(group_settings.get("warning_limit", 3))
-            if count >= limit:
+            if count >= limit and moderator_id != 0:
                 should_escalate = True
                 await WarningRepository.clear_warnings(chat_id, user.id)
 
@@ -249,6 +249,7 @@ class ModerationActions:
                 chat_id=chat_id,
                 user_id=user.id,
                 permissions=mute_permissions,
+                until_date=int(time.time() + duration_seconds) if duration_seconds else None,
             )
         except Exception as exc:
             telemetry.increment("moderation_errors_total", action="mute")

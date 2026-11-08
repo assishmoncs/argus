@@ -236,6 +236,10 @@ async def cmd_settings(message: types.Message) -> None:
     key = args[0].lower().strip()
     value = args[1].lower().strip()
 
+    if key in ("ai", "captcha", "raid") and value not in ("on", "true", "1", "enable", "off", "false", "0", "disable"):
+        await message.reply("❌ Use on or off for this setting.")
+        return
+
     if key == "limit":
         if not value.isdigit() or int(value) < 1:
             await message.reply("❌ Warning limit must be a positive integer.")

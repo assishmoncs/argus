@@ -14,7 +14,7 @@ from aiogram import Bot, F, Router, types
 from aiogram.enums import ChatMemberStatus
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.filters.permissions import is_user_chat_admin
+from bot.filters.permissions import get_cached_chat_member_status
 from config.settings import settings
 from database.models import (
     GroupMemberRepository,
@@ -94,6 +94,8 @@ def append_history(chat_id: int, formatted_msg: str) -> None:
 async def on_user_join(message: types.Message, bot: Bot) -> None:
     """Handle new members joining. Trigger mute, CAPTCHA challenge, and welcome message."""
     chat_id = message.chat.id
+    if settings.GROUP_CHAT_ID and chat_id != settings.GROUP_CHAT_ID:
+        return
     group_settings = await GroupRepository.get_group(chat_id)
     captcha_enabled = bool(group_settings.get("welcome_captcha", 0))
     anti_raid = bool(group_settings.get("anti_raid", 0))
@@ -108,12 +110,8 @@ async def on_user_join(message: types.Message, bot: Bot) -> None:
         captcha_enabled = True
 
     for member in message.new_chat_members or []:
+        # Never kick bots automatically, including Argus itself.
         if member.is_bot:
-            try:
-                await bot.ban_chat_member(chat_id, member.id)
-                await bot.unban_chat_member(chat_id, member.id)
-            except Exception as exc:
-                logger.warning("Failed to kick joining bot %d in chat %d: %s", member.id, chat_id, exc)
             continue
 
         await UserRepository.get_or_create_user(
@@ -277,6 +275,8 @@ async def on_captcha_click(callback: types.CallbackQuery, bot: Bot) -> None:
 async def on_user_leave(message: types.Message) -> None:
     """Handle users leaving/being kicked. Send goodbye message."""
     chat_id = message.chat.id
+    if settings.GROUP_CHAT_ID and chat_id != settings.GROUP_CHAT_ID:
+        return
     member = message.left_chat_member
     if not member:
         return
@@ -296,6 +296,11 @@ async def on_user_leave(message: types.Message) -> None:
         logger.warning("Failed to send goodbye message: %s", exc)
 
 
+def automatic_ai_action(result: dict) -> str:
+    """Reduce untrusted model output to a critical warning or no action."""
+    return "warn" if result.get("action") in ("warn", "delete", "ban") and result.get("severity") == 5 else "none"
+
+
 # ---------------------------------------------------------------------------
 # Message Moderation Pipeline
 # ---------------------------------------------------------------------------
@@ -305,6 +310,9 @@ async def on_message(message: types.Message, bot: Bot) -> None:
     """Monitor and process every incoming text message or attachment."""
     chat_id = message.chat.id
     user = message.from_user
+
+    if message.chat.type not in ("group", "supergroup"):
+        return
 
     # 1. Scope restriction (ignore other chats if config limits it)
     if settings.GROUP_CHAT_ID != 0 and chat_id != settings.GROUP_CHAT_ID:
@@ -321,7 +329,15 @@ async def on_message(message: types.Message, bot: Bot) -> None:
         user.id, user.username, user.first_name, user.last_name
     )
 
-    is_admin = await is_user_chat_admin(bot, chat_id, user.id)
+    # Fail closed if Telegram cannot confirm whether the sender is an admin.
+    try:
+        status = await get_cached_chat_member_status(bot, chat_id, user.id)
+        if status is None:
+            return
+        is_admin = status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR)
+    except Exception:
+        logger.warning("Cannot verify sender status in chat %d; skipping moderation", chat_id)
+        return
     text = (message.text or message.caption or "").strip()
 
     if not is_admin:
@@ -376,7 +392,6 @@ async def on_message(message: types.Message, bot: Bot) -> None:
             except Exception as exc:
                 logger.warning("Could not delete spam message: %s", exc)
 
-            await ModerationActions.warn(chat_id, user, f"Spam detected: {spam_reason}", 0, bot)
             return
 
     # C. Run AI Moderation (if enabled and text exists)
@@ -385,11 +400,11 @@ async def on_message(message: types.Message, bot: Bot) -> None:
         ai_enabled = bool(group_settings.get("ai_enabled", 1))
 
         if ai_enabled:
-            append_history(chat_id, f"{user.first_name}: {text}")
             recent_context = get_recent_history(chat_id)
-
-            ai_res = await ai_service.analyze_message(text, recent_context, chat_id)
-            action = ai_res.get("action", "none")
+            ai_res = await ai_service.analyze_message(text, recent_context, chat_id) if not is_admin else {}
+            append_history(chat_id, f"{user.first_name}: {text}")
+            # A model response cannot directly ban; only explicit critical decisions warn.
+            action = automatic_ai_action(ai_res)
             reason = ai_res.get("reason", "")
             user_msg = ai_res.get("user_message", "Please respect the chat rules.")
 
@@ -417,18 +432,3 @@ async def on_message(message: types.Message, bot: Bot) -> None:
                         )
                     except Exception:
                         pass
-                elif action == "delete":
-                    try:
-                        sent_msg = await message.answer(
-                            f"⚠️ **{user.first_name}**, please keep chat respectful. Message deleted."
-                        )
-                        task_manager.create_task(
-                            auto_delete_message(sent_msg, 20),
-                            name=f"autodel_ai_del_{chat_id}_{user.id}",
-                        )
-                    except Exception:
-                        pass
-                elif action == "ban":
-                    await ModerationActions.ban(
-                        chat_id, user, None, f"AI Moderation: {reason}", 0, bot
-                    )

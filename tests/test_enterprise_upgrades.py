@@ -192,27 +192,11 @@ class TestGeminiOptimizationAndFallbacks:
     async def test_heuristic_fallback_multi_signal_engine(self):
         fb = HeuristicFallbackProvider()
 
-        # 1. Severe safety violation -> ban
-        res_ban = await fb.analyze_message("You should kill yourself right now", "")
-        assert res_ban["action"] == "ban"
-        assert res_ban["severity"] == 5
-
-        # 2. Scam phrase -> delete
-        res_scam = await fb.analyze_message("Double your BTC today with guaranteed profit!", "")
-        assert res_scam["action"] == "delete"
-        assert res_scam["severity"] >= 2
-
-        # 3. Toxic insult -> warn
-        res_toxic = await fb.analyze_message("You are a complete idiot and moron", "")
-        assert res_toxic["action"] == "warn"
-
-        # 4. Excessive caps shouting -> warn
-        res_caps = await fb.analyze_message("THIS IS AN EXTREMELY LOUD ALL CAPS SHOUTING MESSAGE IN CHAT", "")
-        assert res_caps["action"] == "warn"
-
-        # 5. Clean message -> none
-        res_clean = await fb.analyze_message("Good morning everyone, how is the project going?", "")
-        assert res_clean["action"] == "none"
+        # Offline matching cannot reliably identify context, so it never punishes.
+        for text in ("You should kill yourself right now", "Double your BTC today with guaranteed profit!",
+                     "You are a complete idiot and moron", "THIS IS A LOUD MESSAGE",
+                     "Good morning everyone"):
+            assert (await fb.analyze_message(text, ""))["action"] == "none"
 
         # 6. Rule-aware Q&A fallback
         qa = await fb.answer_question(
@@ -280,6 +264,7 @@ class TestMiddlewareAndPlugins:
 
         msg = Message(
             message_id=10,
+            date=0,
             from_user=User(id=1, is_bot=False, first_name="Tester"),
             chat=Chat(id=-1001, type="supergroup"),
             text="Hello middleware",
