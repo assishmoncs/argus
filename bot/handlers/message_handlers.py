@@ -5,6 +5,7 @@ Features bounded LRU chat histories, concurrency-safe CAPTCHA verification, and 
 
 import asyncio
 import logging
+import re
 import threading
 import time
 from collections import OrderedDict
@@ -296,6 +297,23 @@ async def on_user_leave(message: types.Message) -> None:
         logger.warning("Failed to send goodbye message: %s", exc)
 
 
+_BAD_WORDS = re.compile(r"\b(?:fuck(?:ing|er|ed)?|shit|bitch|asshole|bastard|cunt)\b", re.I)
+_WAKE = re.compile(r"^\s*hey[\s,]+argus\b[\s,:!?-]*", re.I)
+_reminder_times: OrderedDict[tuple[int, int, str], float] = OrderedDict()
+
+
+def allow_reminder(chat_id: int, user_id: int, kind: str) -> bool:
+    now = time.monotonic()
+    key = (chat_id, user_id, kind)
+    if now - _reminder_times.get(key, float("-inf")) < 60:
+        return False
+    _reminder_times[key] = now
+    _reminder_times.move_to_end(key)
+    while len(_reminder_times) > 2048:
+        _reminder_times.popitem(last=False)
+    return True
+
+
 def automatic_ai_action(result: dict) -> str:
     """Reduce untrusted model output to a critical warning or no action."""
     return "warn" if result.get("action") in ("warn", "delete", "ban") and result.get("severity") == 5 else "none"
@@ -322,7 +340,7 @@ async def on_message(message: types.Message, bot: Bot) -> None:
     if message.text and message.text.startswith("/"):
         return
 
-    if not user:
+    if not user or user.is_bot:
         return
 
     await UserRepository.get_or_create_user(
@@ -339,6 +357,20 @@ async def on_message(message: types.Message, bot: Bot) -> None:
         logger.warning("Cannot verify sender status in chat %d; skipping moderation", chat_id)
         return
     text = (message.text or message.caption or "").strip()
+
+    wake = _WAKE.match(text)
+    replied = message.reply_to_message
+    is_followup = bool(replied and replied.from_user and replied.from_user.id == bot.id)
+    if text and (wake or is_followup):
+        question = text[wake.end():].strip() if wake else text
+        if not question:
+            await message.reply("I'm listening. What would you like to ask?")
+        else:
+            answer = await ai_service.answer_question(question, "", chat_id)
+            await message.reply(answer or "Sorry, I couldn't answer right now.")
+
+    if text and _BAD_WORDS.search(text) and allow_reminder(chat_id, user.id, "language"):
+        await message.reply("Please avoid using explicit or offensive words in the group.")
 
     if not is_admin:
         # A. Run Banned Words Filters
@@ -401,8 +433,10 @@ async def on_message(message: types.Message, bot: Bot) -> None:
 
         if ai_enabled:
             recent_context = get_recent_history(chat_id)
-            ai_res = await ai_service.analyze_message(text, recent_context, chat_id) if not is_admin else {}
-            append_history(chat_id, f"{user.first_name}: {text}")
+            ai_res = await ai_service.analyze_message(text, recent_context, chat_id)
+            append_history(chat_id, f"User {user.id}: {text}")
+            if ai_res.get("fighting") is True and allow_reminder(chat_id, user.id, "fight"):
+                await message.reply("Please take a breath and keep the discussion respectful. Let's avoid personal attacks.")
             # A model response cannot directly ban; only explicit critical decisions warn.
             action = automatic_ai_action(ai_res)
             reason = ai_res.get("reason", "")
